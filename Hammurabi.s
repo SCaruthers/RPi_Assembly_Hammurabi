@@ -14,7 +14,7 @@
 @ Defined Constants:
 .equ    FALSE,   0
 .equ    TRUE,    0xFF
-.equ    MAX_YRS, 3              @ Total number of years in reign
+.equ    MAX_YRS, 10              @ Total number of years in reign
 
 
 @ Global variables:
