@@ -1,5 +1,5 @@
 @ Hammurabi.s
-@   re-written in ARM Assembly by S. Caruthers, 2020
+@   re-written in ARM Assembly by S. Caruthers, 2021
 @   Original in FOCAL by Doug Dyment, 1968
 @   Later, rewritten in BASIC by David H. Ahl, 1971
 @   And in a multitude of other languages by oh so many. 
