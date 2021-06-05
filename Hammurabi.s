@@ -1,6 +1,8 @@
 @ Hammurabi.s
-@   re-writted in ARM Assembly by S. Caruthers
-@   Original by 
+@   re-written in ARM Assembly by S. Caruthers, 2020
+@   Original in FOCAL by Doug Dyment, 1968
+@   Later, rewritten in BASIC by David H. Ahl, 1971
+@   And in a multitude of other languages by oh so many. 
 
 @ -----------------------------------
 @   Data Section
@@ -12,7 +14,28 @@
 @ Defined Constants:
 .equ    FALSE,   0
 .equ    TRUE,    0xFF
-.equ    MAX_YRS, 10              @ Total number of years in reign
+.equ    MAX_YRS, 3              @ Total number of years in reign
+
+
+@ Global variables:
+
+cur_year:   .int    0       @ counter for number of years
+plague:     .int    FALSE   @ Flag for plague TRUE (0xFF) or FALSE (0)
+population: .int    100     @ current total population
+acre_cost:  .int    0       @ current price of land bushels / acre
+acres_ownd: .int    1000    @ current acres owned
+to_buy:     .int    0       @ how many acres to buy
+to_sell:    .int    0       @ how many acres to sell 
+to_feed:    .int    0       @ how many bushels to feed the people
+to_plant:   .int    0       @ how many acres to plant
+rats_ate:   .int    200     @ num bushels eaten by rats this year
+num_deaths: .int    0       @ num people who starved this year
+tot_deaths: .int    0       @ cumulative num of deaths, used for scoring
+death_rate: .single 0       @ cumulative death rate, used for score
+new_pop:    .int    5       @ number of births / immigrations this year 
+hvest_tot:  .int    3000    @ total bushels harvested this year 
+hvest_bpa:  .int    3       @ amount of harvest in bushels per acre 
+storage:    .int    2800    @ total bushels in storage
 
 @ Message Strings:
 sformat:    .asciz "%u"         @ in scanf, we will take unsigned int
@@ -30,9 +53,9 @@ welcom_msg: .ascii "\n\nCongratulations, you have been elected the ruler of anci
             .ascii "Rule wisely and you will be showered with appreciation at the end of\n"
             .asciz "your term. Rule poorly and you will be kicked out of office!\n\n"
 impeach_msg:.asciz "Due to this extreme mismanagement you have not only\nbeen impeached and thrown out of office, but you have\nalso been declared National Fink !!\n"
-great_msg:  .asciz "A fantastic performance!!!  Charlemange, Disraeli, and \nJefferson combined could not have done better!\,"
+great_msg:  .asciz "A fantastic performance!!!  Charlemange, Disraeli, and \nJefferson combined could not have done better!\n"
 so_so_msg:  .asciz "Your performance could have been somewhat better, but\nreally wasn\'t too bad at all. %u people would\ndearly like to see you assassinated but we all have our\ntrivial problems.\n"
-bad_msg:    .asciz "Your heavy-handed performance smacks of Nero and Ivan IV.\nThe people (remaining) find you an unpleasant ruler, \nand, frankly, hate your guts!"
+bad_msg:    .asciz "Your heavy-handed performance smacks of Nero and Ivan IV.\nThe people (remaining) find you an unpleasant ruler, \nand, frankly, hate your guts!\n"
 buy_prmp:   .asciz "How many acres of land do you want to buy? : "
 buy_err1:   .asciz "Oh Great Hammurabi, we cannot buy any land this year, \nas we have too little grain.\n"
 buy_err2:   .asciz "Oh Great Hammurabi, we do not have enough grain to buy %u acres.\n"
@@ -45,35 +68,18 @@ feed_err2:  .asciz "Oh Great Hammurabi, we do not have %u bushels to feed.\n"
 starve_err: .asciz "You starved %u people in one year!!!\n"
 plant_prmp: .asciz "How many acres do you want to plant? : "
 plant_err1: .asciz "Oh Great Hammurabi, we have no grain to plant!\n"
-plant_err2: .asciz "Oh Great Hammurabi, we cannot plant so many acres!\n"
+plant_err2: .asciz "Oh Great Hammurabi, we own no land!!\n"
+plant_err3: .asciz "Oh Great Hammurabi, we cannot plant so many acres!\n"
 sum_msg1:   .asciz "\nO great Hammurabi!\nYou are in year %u of your 10 year rule.\n"
 plague_msg: .asciz "There was a terrible plague and half the population died.\n"
 sum_msg2:   .asciz "In the previous year, %u people starved to death,\nand %u people entered the kingdom.\nThe population is now %u.\n"
 sum_msg3:   .asciz "We harvested %u bushels at %u bushels per acre.\n"
 sum_msg4:   .asciz "Rats destroyed %u bushels, leaving %u bushels in storage.\n"
 sum_msg5:   .asciz "The city owns %u acres of land.\nLand is currently worth %u bushels per acre.\n"
-tmp_bye:    .asciz "\nBye Bye, for now\n"
-
-
-@ Global variables:
-cur_year:   .int    0       @ counter for number of years
-plague:     .int    FALSE   @ Flag for plague TRUE (0xFF) or FALSE (0)
-population: .int    100     @ current total population
-acre_cost:  .int    0       @ current price of land bushels / acre
-acres_ownd: .int    1000    @ current acres owned
-to_buy:     .int    0       @ how many acres to buy
-to_sell:    .int    0       @ how many acres to sell 
-to_feed:    .int    0       @ how many bushels to feed the people
-to_plant:   .int    0       @ how many acres to plant
-rats_ate:   .int    200     @ num bushels eaten by rats this year
-num_deaths: .int    0       @ num people who starved this year
-tot_deaths: .int    0       @ cumulative num of deaths, used for scoring
-death_rate: .word   0       @ cumulative death rate, used for score
-new_pop:    .int    5       @ number of births / immigrations this year 
-hvest_tot:  .int    3000    @ total bushels harvested this year 
-hvest_bpa:  .int    3       @ amount of harvest in bushels per acre 
-storage:    .int    2800    @ total bushels in storage
-
+fnl_msg1:   .asciz "\nO Great Hammurabi!  Your reign is over.\n"
+fnl_msg2:   .asciz "\nIn your 10-year reign, a total of %u people starved \nfor an average of %u%% per year.\n"
+fnl_msg3:   .asciz "You started with 10 acres per person, and ended with %u.\n\n"
+bye_msg:    .asciz "\nBye Bye, for now.\n"
 
 
 @ -----------------------------------
@@ -108,7 +114,7 @@ main:
         str     r0, [r1]            @ save value
     
         cmp     r0, #MAX_YRS        @ check if we are at MAX
-        bgt     end_main            @ if cur > max, jump to end
+        bgt     end_game            @ if cur > max, jump to end
         
         bl      getLandPrice        @ call subroutine for random land price
 
@@ -123,26 +129,23 @@ main:
         @ set yearly values to zero (do not carry over from previous year)
         mov     r0, #0              @ put 0 in r0, to zero out...
         ldr     r1, =to_buy         
-        str     r0, [r1]            @ to_buy
+        str     r0, [r1]            @ ...to_buy
         ldr     r1, =to_sell
-        str     r0, [r1]            @ to_sell
-        ldr     r0, =to_feed 
-        str     r0, [r1]            @ to_feed
-        ldr     r0, =to_plant       
-        str     r0, [r1]            @ to_plant
+        str     r0, [r1]            @ ...to_sell
+        ldr     r1, =to_feed 
+        str     r0, [r1]            @ ...to_feed
+        ldr     r1, =to_plant       
+        str     r0, [r1]            @ ...to_plant
 
     skip_to_buy:
         @ if there is any grain in storage, ask about buying land
         @ put number of acres to buy in r4
         cmp     r5, #17             @ if bushels in storage > 17 (cheapest land)
-        bgt     prompt_to_buy         @ then skip to buying option  
+        bgt     prompt_to_buy       @   then skip to buying option  
                                     @ else, r5<17, so no grain to buy land with
-        mov     r4, #0              @ so set r4 (land to buy) == 0
-        ldr     r0, =to_buy         @ point to location of land to buy
-        str     r4, [r0]            @ and put 0 in memory location
-        ldr     r0, =buy_err1       @ point to error message string
+        ldr     r0, =buy_err1       @   point to error message string
         bl      printf
-        bal     skip_to_sell        @ move on to selling land
+        bal     skip_to_sell        @   move on to selling land
     prompt_to_buy:
         ldr     r0, =buy_prmp       @ point to prompt for buying land
         bl      printf  
@@ -161,7 +164,7 @@ main:
         mov     r1, r6              @     else, print error and loop
         ldr     r0, =buy_err2       @     with r1=#acres to buy as param
         bl      printf              @     to printf
-        bal     prompt_to_buy         @     Go ask again until valid entry
+        bal     prompt_to_buy       @     Go ask again until valid entry
     finish_buying:                  @ if we got here, acres to buy >= 1 and valid
         sub     r5, r5, r4          @ Reduce grain in storage (r5) by cost (r4)
         add     r7, r7, r6          @ Inc acres_ownd (r7) by acres bought (r6)
@@ -227,13 +230,15 @@ main:
     plant_it:
         cmp     r5, #0              @ do we have grain to plant?
         bgt     check_acres         @   then skip error
-        ldr     r0, =plant_err1     @   else, print error message
-        bl      printf
-        @ make sure to_feed is 0
-        bal     update_population   @   and branch to next topic
+        ldr     r0, =plant_err1     @ else, print error message
+        bl      printf        
+        bal     update_population   @ and branch to next topic
     check_acres:
         cmp     r7, #0              @ do we have any acreage to plant?
-        bgt     prompt_to_plant     @   then skip to 
+        bgt     prompt_to_plant     @   then skip to it
+        ldr     r0, =plant_err2     @ else, print error message
+        bl      printf  
+        bal     update_population   @ and branch to next topic
     prompt_to_plant:
         ldr     r0, =plant_prmp     @ point to prompt message string
         bl      printf
@@ -256,7 +261,7 @@ main:
         cmple   r0, r5              @ or if seed required (r0) <= storage (r5)
         cmple   r6, r1              @ or if acres to plant (r6) <= what population can plant (r1)
         ble     finish_planting     @ then skip over the error message
-        ldr     r0, =plant_err2     @ else, print err message
+        ldr     r0, =plant_err3     @ else, print err message
         bl      printf
         bal     prompt_to_plant     @ and go back to ask again.
     finish_planting:
@@ -273,7 +278,7 @@ main:
         bl      printf              @   print starvation message.
         ldr     r0, =impeach_msg    @   point to impeachment message
         bl      printf
-        bal     end_main            @ goto end of program
+        bal     end_main            @   goto end of program
     
     update_harvest:
         ldr     r1, =storage        @ before going to subroutine, 
@@ -287,9 +292,12 @@ main:
         str     r7, [r1]            @ put updated value in global acres_ownd
         
         bal     year_loop           @ loop to next year
+    
+    end_game:
+        bl      printScore          @ print Score Summary and message 
         
-    end_main:
-        ldr     r0, =tmp_bye
+    end_main:        
+        ldr     r0, =bye_msg
         bl      printf
     
         pop     {ip, pc}            @ return to OS by loading lr into pc
@@ -348,11 +356,10 @@ intDivide:
         
         vdiv.F32 s16, s14, s15  @ perform division on FPU
         vcvt.U32.F32  s16, s16  @ convert FP to Int by rounding toward 0
+                                @ could use R flag to round per fpscr
         
         vmov    r0, s16         @ put result in r0 to return 
         pop     {pc}            @ and return
-        
-
 
 @ -----------------------------------
 @   printSummary(): prints the summary of this years events
@@ -361,7 +368,7 @@ printSummary:
         @ Prints the summary which includes, e.g.:
         @   O great Hammurabi!
         @   You are in year 1 of your 10 year rule.
-        @   In the previous year 0 people starved to death,
+        @   In the previous year, 0 people starved to death,
         @   and 5 people entered the kingdom.
         @   The population is now 100.
         @   We harvested 3000 bushels at 3 bushels per acre.
@@ -376,7 +383,7 @@ printSummary:
         ldr     r1, [r1]            @ get value of counter into r1 for printf
         ldr     r0, =sum_msg1       @ point to 1st line of summary message 
         bl      printf
-        @ print if there was a plague if there was one
+        @ print if there was a plague, if there was one
         ldr     r1, =plague         @ point to location of plague flag
         ldr     r1, [r1]            @ and put value in r1
         cmp     r1, #FALSE          @ was there a plague?
@@ -394,7 +401,8 @@ printSummary:
         ldr     r0, =sum_msg2       @ point to population line of summary message
         bl      printf
         
-        @ print harvest information: total (r1), rate (r2), then rat eaten (r1), storage (r2)
+        @ print harvest information: 
+        @   total (r1), rate (r2), then rat eaten (r1), storage (r2)
         ldr     r1, =hvest_tot
         ldr     r1, [r1]
         ldr     r2, =hvest_bpa
@@ -418,7 +426,101 @@ printSummary:
         
     end_printSummary:    
         pop     {r0-r4, pc}         @ return 
+
+@ -----------------------------------
+@   printScore(): prints score summary and message
+printScore:
+        @ returns nothing
+        @ prints final summary, score and message
+        @ depending on death rate and land ownership
         
+        push    {r4-r6, lr}         @ save return link
+        
+        @ print 1st line with last year of reign
+        ldr     r0, =fnl_msg1       @ point to 1st line of message 
+        bl      printf
+        @ print if there was a plague, if there was one
+        ldr     r1, =plague         @ point to location of plague flag
+        ldr     r1, [r1]            @ and put value in r1
+        cmp     r1, #FALSE          @ was there a plague?
+        beq     no_plague2          @ if not, skip printing
+        ldr     r0, =plague_msg     @ point to location of plague string
+        bl      printf
+    no_plague2:
+        @ print the # deaths (r1), # births/immigrants (r2), and current population (r3)
+        ldr     r1, =num_deaths     @ point to location of number of deaths
+        ldr     r1, [r1]            @ and put value in r1
+        ldr     r2, =new_pop        @ point to location of number of new population
+        ldr     r2, [r2]            @ and put value in r2
+        ldr     r3, =population     @ point ot location of population
+        ldr     r3, [r3]            @ and put value in r3
+        ldr     r0, =sum_msg2       @ point to population line of summary message
+        bl      printf
+        
+        @ print the average death rate (r2) and total starvations (r1)
+        ldr     r2, =death_rate
+        vldr    s0, [r2]
+        vcvt.U32.F32 s0, s0         @ convert single to int (for easy print and cmp)
+        vmov    r2, s0              @ r2 <- death rate (as int) for printf
+        mov     r5, r2              @ r5 <- death rate (for later)
+        ldr     r1, =tot_deaths
+        ldr     r1, [r1]
+        ldr     r0, =fnl_msg2
+        bl      printf
+        
+        @ calculate acres / person as part of scoring
+        ldr     r0, =acres_ownd
+        ldr     r0, [r0]            @ r0 <- num acres owned
+        ldr     r1, =population     @ r1 <- final population
+        ldr     r1, [r1]
+        bl      intDivide           @ caluculate acres/pop
+        mov     r6, r0              @ r6 <- acres/pop (for later)
+        mov     r1, r0              @ also for printf
+        ldr     r0, =fnl_msg3       @ point to 3rd message
+        bl      printf              
+        
+        @ now figure out which message to say.  Based on:
+        @   r5 <- death rate
+        @   r6 <- acres per person
+        @   r5 > 33 or r6 < 7  : impeach
+        @   r5 > 10 or r6 < 9  : bad
+        @   r5 > 3  or r6 < 10 : so-so
+        @   else               : great
+        
+        @ impeach
+        cmp     r5, #33             @ is r5 > 33
+        ldrgt   r0, =impeach_msg    @   then done. point to message
+        bgt     print_saying        @   and go print it
+        cmp     r6, #7              @ else, is r6 < 7
+        ldrlt   r0, =impeach_msg    @   then point to message
+        blt     print_saying        @   and go print it
+        
+        @ else, bad
+        cmp     r5, #10             @ is r5 > 10
+        ldrgt   r0, =bad_msg        @   then done. point to message
+        bgt     print_saying        @   and go print it
+        cmp     r6, #9              @ else, is r6 < 9
+        ldrlt   r0, =bad_msg        @   then point to message
+        blt     print_saying        @   and go print it
+
+        @ else, so-so
+        mov     r0, #11             @ Need a random number for this message
+        bl      rando              
+        add     r1, r0, #2          @ make r1 from 2 to 12
+        cmp     r5, #3              @ is r5 > 3
+        ldrgt   r0, =so_so_msg      @   then done. point to message
+        bgt     print_saying        @   and go print it
+        cmp     r6, #10             @ else, is r6 < 10
+        ldrlt   r0, =so_so_msg      @   then point to message
+        blt     print_saying        @   and go print it
+        
+        @ else, great
+        ldr     r0, =great_msg      @ if none of the others, then great!
+        
+    print_saying:
+        bl      printf
+        
+        pop     {r4-r6, pc}         @ return
 @ -----------------------------------
 @   getLandPrice(): put a random value between 17-26 into acre_cost
 getLandPrice:
@@ -451,23 +553,23 @@ isPlague:
         cmp     r0, #15         @ if < 15 (out of 100), ie 15% of the time
         movlt   r0, #TRUE       @   then r0 <- TRUE
         strlt   r0, [r4]        @   and set flag TRUE   
-        pop     {r4, pc}    @ return
+        pop     {r4, pc}        @ return
 
 @ -----------------------------------
 @   updatePopulation(): returns TRUE or FALSE and updates global variable
 updatePopulation:
         @ returns message in r0, 
-        @   TRUE if people were fed 'enough'
-        @   FALSE if too many (>50%) people starved and ruler should be impeached
+        @    TRUE if people were fed 'enough'
+        @    FALSE if too many (>50%) people starved and ruler should be impeached
         @ updates global population variable with new population:
-        @   Incorporates plague, starvations, and births+immigration
+        @    Incorporates plague, starvations, and births+immigration
         
         push    {r4-r7, lr}         @ protect the registers and store return link
         ldr     r4, =population     @ r4 points to current population global variable
         ldr     r6, [r4]            @ put population value in r6
         
         @ adjust for plague
-        bl      isPlague            @ set flag for plague or not and return result in r0
+        bl      isPlague            @ set flag for plague or not, return result in r0
         cmp     r0, #TRUE           @ if there was a plague,
         lsreq   r6, r6, #1          @ divide population by 2   
         
@@ -499,6 +601,11 @@ updatePopulation:
         mov     r2, #0              @ r2 <- 0, no starvations this year 
         
     immigration:
+        @ before doing immigration & births, update starvation rate for scoring
+        mov     r0, r2              @ pass # starvations this year
+        mov     r1, r6              @ current population
+        bl      calcDeathRate
+        
         @ calculate addition to population as 1 + ((20 * acres_ownd + storage) / (100 * population))
         
         ldr     r0, =acres_ownd     @ point to location with num acres_ownd
@@ -524,7 +631,51 @@ updatePopulation:
         str     r6, [r4]            @ update global variable with new population
         ldr     r4, =num_deaths     @ point to global var with num deaths this year_loop
         str     r2, [r4]            @ update it with number of starvations
+        ldr     r4, =tot_deaths     @ also add to global of total number of starvations
+        ldr     r1, [r4]            
+        add     r1, r1, r2          @ add current starvation to running total
+        str     r1, [r4] 
         pop     {r4-r7, pc}         @ return
+
+@ -----------------------------------
+@   calcDeathRate(r0,r1): returns nothing, but updates global variable
+calcDeathRate:
+        @ assumes registers are passed as
+        @   r0 = r2 <- current year num_deaths by starvation
+        @   r1 = r6 <- population (already adjusted for starvation)
+        
+        push    {r2, r6, lr}
+        
+        mov     r2, r0              @ number of deaths by starvation
+        mov     r6, r1              @ current total population (- curr deaths)
+        add     r6, r6, r2          @ total pop before deaths subtracted
+
+    
+        @ new death_rate = (years_ruled * death_rate + 100 * num_deaths/population) / (years_ruled+1)
+        mov     r3, #100            @ put 100 in r3 to multiply
+        mul     r0, r2, r3          @ r0 <- (100 * num_deaths)
+        vmov    s0, r0              @ put r0 into single float FPU register s0
+        vcvt.f32.u32 s0, s0         @ convert from int to float
+        vmov    s1, r6              @ similarly, s1 <- population
+        vcvt.f32.u32 s1, s1         @ convert from int to float
+        vdiv.f32 s0, s0, s1         @ s0 <- (100*num_deaths/population)
+        ldr     r1, =death_rate     @ get current death rate
+        vldr    s1, [r1]            @ s1 <- current death rate
+        ldr     r1, =cur_year       @ get current year of rule (# years +1)
+        ldr     r1, [r1]            @ put into r1 and
+        sub     r1, r1, #1          @ dec by 1 to num years ruled
+        vmov    s3, r1              @ into s3
+        vcvt.f32.u32 s3, s3         @ convert from int to float
+        vmul.f32 s1, s1, s3         @ s1 <- (death_rate * years_ruled)
+        vadd.f32 s0, s0, s1         @ s0 <- (100 * num_deaths/population) + (death_rate * years_ruled)
+        add     r1, r1, #1          @ (years_ruled+1)
+        vmov     s3, r1             @ s3 <- (years_ruled+1)
+        vcvt.f32.u32 s3, s3         @ convert from int to float
+        vdiv.f32 s0, s0, s3         @ s0 <- new death_rate
+        ldr     r1, =death_rate     
+        vstr    s0, [r1]            @ update global variable of death_rate
+    
+        pop     {r2, r6, pc}
 
 @ -----------------------------------
 @   updateHarvest(): returns nothing, but updates global variable
@@ -562,7 +713,7 @@ updateHarvest:
         str     r0, [r6]            @ set rats_ate to zero
         mov     r0, #100
         bl      rando               @ return r0 <- value from 0 - 99
-        cmp     r0, #40             @ 0 - 39 should happen 40% of the time
+        cmp     r0, #40             @ should happen 40% of the time
         bgt     end_updateHarvest   @ if no infestation, skip to end
         mov     r0, #3              @ else,
         bl      rando               @   return r0 <- value 0 - 2
